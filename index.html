@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SI PASTI - Pembuat Soal AI SD</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            body {
+                background: white !important;
+                padding: 0 !important;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+        }
+    </style>
+</head>
+<body class="bg-neutral-100 text-neutral-800 min-h-screen flex flex-col">
+
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="app" class="flex-1 flex flex-col"></div>
+
+    <script>
+        // SCHOOL LOGO SVG DATA DATA-URI
+        const SCHOOL_LOGO = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 500 450'><rect width='500' height='450' fill='%23000000'/><defs><linearGradient id='sunRays' x1='0%' y1='100%' x2='0%' y2='0%'><stop offset='0%' stop-color='%23ff5500'/><stop offset='60%' stop-color='%23ffaa00'/><stop offset='100%' stop-color='%23ffee00'/></linearGradient><linearGradient id='ribbonGrad' x1='0%' y1='0%' x2='0%' y2='100%'><stop offset='0%' stop-color='%23ea580c'/><stop offset='50%' stop-color='%23c2410c'/><stop offset='100%' stop-color='%237c2d12'/></linearGradient></defs><g fill='url(%23sunRays)'><path d='M250 260 L100 240 L80 200 Z'/><path d='M250 260 L120 180 L100 145 Z'/><path d='M250 260 L150 130 L135 95 Z'/><path d='M250 260 L190 90 L180 55 Z'/><path d='M250 260 L235 65 L235 35 Z'/><path d='M250 260 L265 35 L265 65 Z'/><path d='M250 260 L320 55 L310 90 Z'/><path d='M250 260 L365 95 L350 130 Z'/><path d='M250 260 L400 145 L380 180 Z'/><path d='M250 260 L420 200 L400 240 Z'/></g><path d='M250 260 C 200 220, 100 220, 50 250 C 150 265, 220 280, 250 295 C 280 280, 350 265, 450 250 C 400 220, 300 220, 250 260 Z' fill='url(%23sunRays)' opacity='0.8'/><polygon points='250,15 255,27 268,27 257,35 261,48 250,40 239,48 243,35 232,27 245,27' fill='%23ffd700'/><path d='M245,280 L245,60 L250,30 L255,60 L255,280 Z' fill='%23ea580c'/><path d='M242,120 L250,80 L258,120 L250,140 Z' fill='%23fb923c'/><path d='M60 265 Q250 310 440 265 L440 295 Q250 340 60 295 Z' fill='url(%23ribbonGrad)'/><text x='250' y='360' font-family='Arial, sans-serif' font-size='30' font-weight='900' fill='%23ea580c' text-anchor='middle' letter-spacing='1'>DHARMA TANJUNG 1</text><text x='250' y='390' font-family='Arial, sans-serif' font-size='14' font-weight='bold' fill='%234b5563' text-anchor='middle'>UPTD SEKOLAH DASAR NEGERI</text><text x='250' y='410' font-family='Arial, sans-serif' font-size='13' font-weight='bold' fill='%23374151' text-anchor='middle'>KEC. CAMPLONG - SAMPANG</text></svg>";
+
+        const SUBJECTS = [
+            "Matematika", "Pendidikan Pancasila", "Bahasa Indonesia", "IPAS", 
+            "Seni Budaya", "Bahasa Madura", "PJOK", "Bahasa Inggris", 
+            "Pendidikan Agama Islam", "Koding dan Kecerdasan Artifisial (KKA)"
+        ];
+
+        const QUESTION_TYPES = [
+            { id: 'pg', name: 'Pilihan Ganda', desc: '1 jawaban benar (opsi A, B, C, D)' },
+            { id: 'pgk', name: 'Pilihan Ganda Kompleks', desc: 'Lebih dari 1 jawaban benar' },
+            { id: 'bs', name: 'Benar atau Salah', desc: 'Pernyataan bernilai Benar/Salah' },
+            { id: 'jodoh', name: 'Menjodohkan', desc: 'Pasangan soal dan jawaban' },
+            { id: 'isian', name: 'Isian', desc: 'Jawaban singkat dan padat' },
+            { id: 'uraian', name: 'Uraian', desc: 'Penjelasan & langkah penyelesaian' },
+            { id: 'hots', name: 'HOTS', desc: 'Penalaran & pemecahan masalah' }
+        ];
+
+        // Global State Store
+        const state = {
+            isAuthenticated: false,
+            pinInput: '',
+            showPin: false,
+            loginError: '',
+            activeTab: 'dashboard',
+            customApiKey: localStorage.getItem('sipasti_gemini_key') || '',
+            showKeyModal: false,
+            isLoading: false,
+            loadingMessage: '',
+            generatedResult: null,
+            editingQuestionIndex: null,
+            searchHistory: '',
+            historyList: JSON.parse(localStorage.getItem('sipasti_history') || '[]'),
+            formData: {
+                teacherName: 'AGUS SANTOSO, M.Pd.',
+                grade: 'Kelas 1',
+                phase: 'Fase A',
+                semester: 'Semester Ganjil',
+                subject: 'Matematika',
+                assessmentType: 'Penilaian Harian',
+                difficulty: 'Sedang',
+                topic: 'Bilangan Cacah sampai 20',
+                learningObjective: 'Siswa dapat mengurutkan dan membandingkan bilangan cacah dari 1 sampai 20 dengan benar.',
+                questionCount: 5,
+                selectedTypes: ['pg', 'isian', 'uraian'],
+                schoolYear: '2026/2027',
+                assessmentDate: new Date().toISOString().split('T')[0],
+                additionalInstruction: 'Buat soal kontekstual kehidupan sehari-hari anak SD, gunakan bahasa ramah anak.'
+            }
+        };
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgClass = type === 'success' ? 'bg-orange-600 border-orange-400' : type === 'error' ? 'bg-red-800 border-red-600' : 'bg-neutral-900 border-neutral-700';
+            
+            toast.className = `${bgClass} text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border text-sm font-semibold transition-all duration-300 transform translate-y-[-10px] opacity-0`;
+            toast.innerHTML = `
+                <i data-lucide="${type === 'success' ? 'check-circle-2' : 'alert-circle'}" class="w-5 h-5"></i>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-[-10px]', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-[-10px]');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function formatIndonesianDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+        }
+
+        function updatePhase() {
+            const gradeNum = parseInt(state.formData.grade.replace('Kelas ', ''));
+            if (gradeNum === 1 || gradeNum === 2) state.formData.phase = 'Fase A';
+            else if (gradeNum === 3 || gradeNum === 4) state.formData.phase = 'Fase B';
+            else if (gradeNum === 5 || gradeNum === 6) state.formData.phase = 'Fase C';
+        }
+
+        function saveToHistory(item) {
+            state.historyList = [item, ...state.historyList.filter(h => h.id !== item.id)];
+            localStorage.setItem('sipasti_history', JSON.stringify(state.historyList));
+        }
+
+        function deleteHistoryItem(id) {
+            if (confirm("Apakah Anda yakin ingin menghapus riwayat soal ini?")) {
+                state.historyList = state.historyList.filter(h => h.id !== id);
+                localStorage.setItem('sipasti_history', JSON.stringify(state.historyList));
+                showToast('Riwayat berhasil dihapus', 'info');
+                render();
+            }
+        }
+
+        async function handleGenerateQuestions() {
+            if (!state.formData.topic.trim()) return showToast('Materi / Ruang Lingkup harus diisi!', 'error');
+            if (!state.formData.learningObjective.trim()) return showToast('Tujuan Pembelajaran harus diisi!', 'error');
+            if (state.formData.questionCount <= 0) return showToast('Jumlah soal harus lebih dari 0!', 'error');
+            if (state.formData.selectedTypes.length === 0) return showToast('Pilih minimal satu bentuk soal!', 'error');
+
+            state.isLoading = true;
+            state.loadingMessage = 'AI sedang menganalisis materi dan tujuan pembelajaran...';
+            render();
+
+            const systemPrompt = `Anda adalah asisten ahli penyusunan asesmen pendidikan sekolah dasar di Indonesia. Buatlah instrumen soal berdasarkan pengaturan yang diberikan guru.
+Patuhi ketentuan berikut:
+1. Gunakan bahasa Indonesia yang jelas, komunikatif, dan sesuai tingkat perkembangan siswa SD.
+2. Sesuaikan kedalaman materi dengan kelas dan fase yang dipilih.
+3. Gunakan materi dan tujuan pembelajaran sebagai acuan utama.
+4. Sesuaikan soal dengan jenis asesmen dan tingkat kesulitan.
+5. Pastikan setiap soal memiliki jawaban yang benar atau kriteria jawaban yang jelas.
+6. Hindari pertanyaan ambigu, pilihan jawaban yang menyesatkan, dan informasi yang tidak relevan.
+7. Untuk soal pilihan ganda, gunakan pilihan A, B, C, dan D serta satu jawaban benar.
+8. Untuk pilihan ganda kompleks, cantumkan semua jawaban yang benar dan jelaskan instruksinya.
+9. Untuk soal menjodohkan, sediakan daftar soal dan pilihan pasangan yang jelas.
+10. Untuk soal uraian, berikan contoh jawaban dan pedoman penskoran.
+11. Untuk soal HOTS, gunakan situasi kontekstual yang memerlukan penalaran sesuai usia siswa.
+12. Buat kisi-kisi yang menunjukkan nomor soal, tujuan/indikator, materi, bentuk soal, dan tingkat kognitif.
+13. Buat kunci jawaban terpisah.
+14. Pastikan jumlah soal tepat ${state.formData.questionCount} soal.
+15. Kembalikan HANYA format JSON valid tanpa teks markdown pembuka/penutup.`;
+
+            const userQuery = `Buatkan ${state.formData.questionCount} soal asesmen untuk SD dengan rincian:
+- Sekolah: UPTD SDN DHARMA TANJUNG 1
+- Guru: ${state.formData.teacherName}
+- Kelas: ${state.formData.grade} (${state.formData.phase})
+- Semester: ${state.formData.semester}
+- Mata Pelajaran: ${state.formData.subject}
+- Jenis Asesmen: ${state.formData.assessmentType}
+- Tingkat Kesulitan: ${state.formData.difficulty}
+- Materi/Ruang Lingkup: ${state.formData.topic}
+- Tujuan Pembelajaran: ${state.formData.learningObjective}
+- Bentuk Soal Ditentukan: ${state.formData.selectedTypes.map(t => QUESTION_TYPES.find(q=>q.id===t)?.name).join(', ')}
+- Tahun Pelajaran: ${state.formData.schoolYear}
+- Tanggal Asesmen: ${state.formData.assessmentDate}
+- Instruksi Tambahan Guru: ${state.formData.additionalInstruction}
+
+RESPON HARUS DALAM FORMAT JSON DENGAN STRUKTUR:
+{
+  "title": "NAMA ASESMEN / JUDUL SOAL",
+  "instructions": "Petunjuk umum pengerjaan soal untuk siswa SD",
+  "questions": [
+    {
+      "number": 1,
+      "type": "Pilihan Ganda | Pilihan Ganda Kompleks | Benar atau Salah | Menjodohkan | Isian | Uraian | HOTS",
+      "question": "Teks pertanyaan soal",
+      "options": ["A. Opsi 1", "B. Opsi 2", "C. Opsi 3", "D. Opsi 4"],
+      "pairs": [{"item": "Pertanyaan A", "match": "Pasangan A"}],
+      "answerKey": "Kunci jawaban / alternatif jawaban lengkap",
+      "indicator": "Indikator pembelajaran / kognitif yang diukur",
+      "cognitiveLevel": "C1 / C2 / C3 / C4 (HOTS) / C5 / C6",
+      "score": 10
+    }
+  ],
+  "scoringRubric": {
+    "summary": "Penjelasan umum penskoran",
+    "totalMaxScore": 100,
+    "formula": "Nilai Akhir = (Total Skor Perolehan / Total Skor Maksimal) x 100"
+  }
+}`;
+
+            try {
+                setTimeout(() => {
+                    if (state.isLoading) {
+                        state.loadingMessage = 'AI sedang mengonstruksi butir soal & kunci jawaban...';
+                        render();
+                    }
+                }, 1200);
+
+                const apiKey = state.customApiKey || "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: userQuery }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        generationConfig: { responseMimeType: "application/json" }
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+
+                const data = await response.json();
+                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!rawText) throw new Error("Format respons tidak valid");
+
+                const parsedData = JSON.parse(rawText);
+                const fullResult = {
+                    id: 'SOAL-' + Date.now(),
+                    createdAt: new Date().toISOString(),
+                    metadata: { ...state.formData },
+                    generated: parsedData
+                };
+
+                state.generatedResult = fullResult;
+                saveToHistory(fullResult);
+                state.activeTab = 'result';
+                showToast('Soal berhasil disusun oleh AI!', 'success');
+            } catch (err) {
+                console.warn("API Error, using fallback simulation:", err);
+                const fallbackResult = generateFallbackQuestions(state.formData);
+                state.generatedResult = fallbackResult;
+                saveToHistory(fallbackResult);
+                state.activeTab = 'result';
+                showToast('Soal berhasil dihasilkan (Modul Simulasi Aktif)', 'info');
+            } finally {
+                state.isLoading = false;
+                render();
+            }
+        }
+
+        function generateFallbackQuestions(config) {
+            const questionList = [];
+            const count = parseInt(config.questionCount) || 5;
+
+            for (let i = 1; i <= count; i++) {
+                const typeIndex = (i - 1) % config.selectedTypes.length;
+                const typeCode = config.selectedTypes[typeIndex];
+                const typeInfo = QUESTION_TYPES.find(t => t.id === typeCode);
+
+                let qObj = {
+                    number: i,
+                    type: typeInfo ? typeInfo.name : 'Pilihan Ganda',
+                    cognitiveLevel: config.difficulty === 'HOTS' ? 'C4 (Analisis)' : 'C2 (Pemahaman)',
+                    score: Math.floor(100 / count),
+                    indicator: `Siswa dapat mengidentifikasi konsep ${config.topic} sesuai tujuan pembelajaran.`
+                };
+
+                if (typeCode === 'pg') {
+                    qObj.question = `Berikut ini yang merupakan penerapan tepat dari materi ${config.topic} dalam kehidupan sehari-hari siswa di sekolah adalah...`;
+                    qObj.options = [
+                        `A. Menghargai dan mempraktikkan konsep ${config.topic} bersama teman.`,
+                        `B. Mengabaikan aturan saat belajar di kelas.`,
+                        `C. Mengerjakan tugas tanpa melihat petunjuk guru.`,
+                        `D. Membiarkan lingkungan belajar menjadi kurang tertata.`
+                    ];
+                    qObj.answerKey = `A. Menghargai dan mempraktikkan konsep ${config.topic} bersama teman.`;
+                } else if (typeCode === 'pgk') {
+                    qObj.question = `Berilah tanda centang (✓) pada beberapa pernyataan yang BENAR terkait ${config.topic}! (Jawaban lebih dari satu)`;
+                    qObj.options = [
+                        `[✓] Pernyataan 1: Konsep ${config.topic} sangat bermanfaat untuk dipelajari.`,
+                        `[✓] Pernyataan 2: Kita dapat menerapkannya saat belajar di UPTD SDN Dharma Tanjung 1.`,
+                        `[ ] Pernyataan 3: Hal ini tidak ada hubungannya dengan kegiatan sehari-hari.`,
+                        `[ ] Pernyataan 4: Hanya perlu dihafalkan tanpa dipahami.`
+                    ];
+                    qObj.answerKey = `Pernyataan 1 dan Pernyataan 2 bernilai BENAR.`;
+                } else if (typeCode === 'bs') {
+                    qObj.question = `Tentukan apakah pernyataan berikut BENAR atau SALAH:\n"Mempelajari ${config.topic} membantu siswa ${config.grade} memahami ${config.learningObjective}."`;
+                    qObj.answerKey = `BENAR. Karena pembahasan ${config.topic} selaras dengan capaian pembelajaran ${config.phase}.`;
+                } else if (typeCode === 'jodoh') {
+                    qObj.question = `Jodohkanlah bagian sebelah kiri dengan pasangan jawaban yang paling tepat di sebelah kanan!`;
+                    qObj.pairs = [
+                        { item: `1. Elemen Utama ${config.topic}`, match: `A. Prinsip Dasar` },
+                        { item: `2. Contoh Implementasi`, match: `B. Kehidupan Sehari-hari` }
+                    ];
+                    qObj.answerKey = `1 -> A, 2 -> B`;
+                } else if (typeCode === 'isian') {
+                    qObj.question = `Sebutkan istilah atau langkah utama yang harus dilakukan ketika kita mempelajari ${config.topic}!`;
+                    qObj.answerKey = `Jawaban ideal: Melakukan identifikasi, pemahaman konsep dasar, dan latihan terpimpin.`;
+                } else {
+                    qObj.question = `Jelaskan dengan bahasamu sendiri, mengapa pemahaman tentang "${config.topic}" penting bagi siswa sekolah dasar, dan berikan 2 contoh penerapannya!`;
+                    qObj.answerKey = `Contoh Jawaban: Pemahaman ${config.topic} penting agar siswa mampu menyelesaikan masalah kontekstual.\nPedoman Penskoran: Skor 10 jika menyebutkan alasan dan 2 contoh tepat; Skor 5 jika kurang lengkap.`;
+                }
+
+                questionList.push(qObj);
+            }
+
+            return {
+                id: 'SOAL-' + Date.now(),
+                createdAt: new Date().toISOString(),
+                metadata: { ...config },
+                generated: {
+                    title: `ASESMEN ${config.assessmentType.toUpperCase()} ${config.subject.toUpperCase()}`,
+                    instructions: "Bacalah setiap pertanyaan dengan teliti sebelum menjawab. Kerjakan soal yang mudah terlebih dahulu!",
+                    questions: questionList,
+                    scoringRubric: {
+                        summary: "Setiap soal memiliki bobot skor yang disesuaikan dengan tingkat kesulitannya.",
+                        totalMaxScore: 100,
+                        formula: "Nilai Akhir = (Total Skor Perolehan / Total Skor Maksimal) x 100"
+                    }
+                }
+            };
+        }
+
+        // Action Handlers
+        function handleCopyText() {
+            if (!state.generatedResult) return;
+            let text = `=== ${state.generatedResult.generated.title} ===\n`;
+            text += `Sekolah: ${state.generatedResult.metadata.schoolName || 'UPTD SDN DHARMA TANJUNG 1'}\n`;
+            text += `Mata Pelajaran: ${state.generatedResult.metadata.subject}\n`;
+            text += `Kelas/Fase: ${state.generatedResult.metadata.grade} (${state.generatedResult.metadata.phase})\n\n`;
+
+            state.generatedResult.generated.questions.forEach((q) => {
+                text += `${q.number}. ${q.question}\n`;
+                if (q.options && q.options.length > 0) {
+                    q.options.forEach(opt => text += `   ${opt}\n`);
+                }
+                text += `\n`;
+            });
+
+            document.execCommand('copy');
+            showToast('Seluruh lembar soal berhasil disalin!', 'success');
+        }
+
+        function handleDownloadDoc() {
+            if (!state.generatedResult) return;
+            const content = document.getElementById('printable-area')?.innerHTML || '';
+            const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Dokumen Soal</title><style>body{font-family:'Times New Roman', serif; margin:2cm;} table{width:100%;border-collapse:collapse;} table,th,td{border:1px solid black;padding:6px;}</style></head><body>";
+            const footer = "</body></html>";
+            const sourceHTML = header + content + footer;
+
+            const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+            const fileDownload = document.createElement("a");
+            document.body.appendChild(fileDownload);
+            fileDownload.href = source;
+            fileDownload.download = `Soal_${state.generatedResult.metadata.subject}_${state.generatedResult.metadata.grade}.doc`;
+            fileDownload.click();
+            document.body.removeChild(fileDownload);
+            showToast('Dokumen Word (.doc) siap diunduh!', 'success');
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+
+            // View 1: LOGIN
+            if (!state.isAuthenticated) {
+                app.innerHTML = `
+                    <div class="min-h-screen bg-neutral-950 flex items-center justify-center p-4">
+                        <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border border-orange-500/30">
+                            <div class="bg-gradient-to-r from-neutral-900 via-orange-900 to-black p-8 text-center text-white relative overflow-hidden border-b-2 border-orange-500">
+                                <div class="flex justify-center mb-4">
+                                    <div class="bg-white p-2.5 rounded-2xl shadow-lg border-2 border-orange-500 max-w-[120px]">
+                                        <img src="${SCHOOL_LOGO}" alt="Logo Sekolah" class="h-20 w-auto object-contain mx-auto" />
+                                    </div>
+                                </div>
+                                <h1 class="text-2xl font-black tracking-tight text-white mb-1">SI PASTI</h1>
+                                <p class="text-xs font-semibold uppercase tracking-wider text-orange-400">Aplikasi Pembuat Soal Otomatis</p>
+                                <div class="mt-2 inline-block px-3 py-1 bg-orange-950/80 rounded-full text-[11px] font-medium text-orange-200 border border-orange-500/50">
+                                    UPTD SDN DHARMA TANJUNG 1
+                                </div>
+                            </div>
+
+                            <div class="p-8 bg-white">
+                                <div class="text-center mb-6">
+                                    <h2 class="text-lg font-bold text-neutral-900">Sistem Cerdas Penyusunan Asesmen Guru SD</h2>
+                                    <p class="text-xs text-neutral-500 mt-1">Masukkan PIN akses sekolah untuk melanjutkan</p>
+                                </div>
+
+                                <form id="login-form" class="space-y-5">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 uppercase tracking-wider mb-2">PIN Akses Guru</label>
+                                        <div class="relative">
+                                            <i data-lucide="lock" class="w-5 h-5 absolute left-3.5 top-3.5 text-orange-600"></i>
+                                            <input
+                                                type="${state.showPin ? "text" : "password"}"
+                                                id="pin-input"
+                                                value="${state.pinInput}"
+                                                placeholder="Masukkan PIN sekolah..."
+                                                class="w-full pl-11 pr-11 py-3 bg-neutral-50 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-orange-500 text-sm font-semibold text-neutral-900"
+                                                required
+                                            />
+                                            <button type="button" id="toggle-pin" class="absolute right-3.5 top-3.5 text-neutral-400 hover:text-orange-600">
+                                                <i data-lucide="${state.showPin ? 'eye-off' : 'eye'}" class="w-5 h-5"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    ${state.loginError ? `
+                                        <div class="p-3 bg-red-50 border-l-4 border-red-500 rounded-r-lg flex items-start gap-2.5 text-red-700 text-xs">
+                                            <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                                            <span>${state.loginError}</span>
+                                        </div>
+                                    ` : ''}
+
+                                    <button type="submit" class="w-full py-3.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 text-sm">
+                                        <i data-lucide="log-in" class="w-4 h-4"></i> MASUK APLIKASI
+                                    </button>
+                                </form>
+
+                                <div class="mt-8 pt-6 border-t border-neutral-100 text-center text-xs text-neutral-400">
+                                    <p>© 2026 UPTD SDN DHARMA TANJUNG 1</p>
+                                    <p class="text-[10px] text-neutral-400 mt-0.5">Kec. Camplong - Kab. Sampang</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                lucide.createIcons();
+
+                document.getElementById('toggle-pin').addEventListener('click', () => {
+                    state.showPin = !state.showPin;
+                    render();
+                });
+
+                document.getElementById('login-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const val = document.getElementById('pin-input').value.trim();
+                    if (val === 'tanjung1') {
+                        state.isAuthenticated = true;
+                        state.loginError = '';
+                        showToast('Selamat Datang di SI PASTI UPTD SDN DHARMA TANJUNG 1', 'success');
+                    } else {
+                        state.loginError = 'PIN yang Anda masukkan salah. Silakan coba kembali.';
+                    }
+                    render();
+                });
+
+                return;
+            }
+
+            // View 2: MAIN DASHBOARD & TABS
+            app.innerHTML = `
+                <!-- Navbar -->
+                <header class="bg-neutral-950 text-white sticky top-0 z-40 shadow-md border-b-2 border-orange-500 no-print">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3 cursor-pointer" id="nav-logo">
+                            <div class="bg-white p-1 rounded-lg border border-orange-400 shadow-sm">
+                                <img src="${SCHOOL_LOGO}" alt="Logo Sekolah" class="h-9 w-auto object-contain" />
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-black text-lg tracking-tight text-white">SI PASTI</span>
+                                    <span class="bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-400">AI Guru SD</span>
+                                </div>
+                                <p class="text-xs text-neutral-300 font-medium hidden sm:block">UPTD SDN DHARMA TANJUNG 1</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 sm:gap-3">
+                            <button id="btn-api-key" class="px-3 py-1.5 text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 rounded-lg text-orange-400 flex items-center gap-1.5 border border-orange-500/40">
+                                <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+                                <span class="hidden md:inline">API Key</span>
+                            </button>
+                            <button id="btn-logout" class="px-3 py-1.5 text-xs font-semibold bg-orange-600 hover:bg-orange-700 rounded-lg text-white flex items-center gap-1.5">
+                                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                                <span class="hidden sm:inline">Keluar</span>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Content Container -->
+                <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 print:p-0 print:max-w-none">
+                    
+                    <!-- Navigation Tabs -->
+                    <div class="mb-6 flex flex-wrap gap-2 border-b border-neutral-300 pb-3 no-print">
+                        <button class="nav-tab px-4 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 ${state.activeTab === 'dashboard' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-neutral-700 hover:bg-orange-50 border border-neutral-200'}" data-tab="dashboard">
+                            <i data-lucide="layers" class="w-4 h-4"></i> Dashboard
+                        </button>
+                        <button class="nav-tab px-4 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 ${state.activeTab === 'create' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-neutral-700 hover:bg-orange-50 border border-neutral-200'}" data-tab="create">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i> Buat Soal Baru
+                        </button>
+                        ${state.generatedResult ? `
+                            <button class="nav-tab px-4 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 ${state.activeTab === 'result' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-neutral-700 hover:bg-orange-50 border border-neutral-200'}" data-tab="result">
+                                <i data-lucide="file-check" class="w-4 h-4"></i> Hasil Soal AI
+                            </button>
+                        ` : ''}
+                        <button class="nav-tab px-4 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 ${state.activeTab === 'history' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-neutral-700 hover:bg-orange-50 border border-neutral-200'}" data-tab="history">
+                            <i data-lucide="bookmark" class="w-4 h-4"></i> Riwayat Soal (${state.historyList.length})
+                        </button>
+                        <button class="nav-tab px-4 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 ${state.activeTab === 'guide' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-neutral-700 hover:bg-orange-50 border border-neutral-200'}" data-tab="guide">
+                            <i data-lucide="help-circle" class="w-4 h-4"></i> Panduan
+                        </button>
+                    </div>
+
+                    <!-- TAB CONTENT BODY -->
+                    <div id="tab-content"></div>
+                </main>
+
+                <!-- API KEY MODAL -->
+                ${state.showKeyModal ? `
+                    <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-orange-500/50">
+                            <h3 class="text-lg font-bold text-neutral-900 mb-2">Konfigurasi Gemini API Key</h3>
+                            <p class="text-xs text-neutral-500 mb-4">Masukkan API Key Google Gemini milik Anda/Sekolah untuk mengaktifkan pemanggilan AI secara langsung.</p>
+                            <input type="password" id="modal-key-input" value="${state.customApiKey}" placeholder="Masukkan AI API Key di sini..." class="w-full p-3 bg-neutral-50 border border-neutral-300 rounded-xl text-xs mb-4 font-mono text-neutral-900" />
+                            <div class="flex justify-end gap-2">
+                                <button id="btn-cancel-key" class="px-4 py-2 bg-neutral-100 text-neutral-700 font-bold text-xs rounded-xl">Batal</button>
+                                <button id="btn-save-key" class="px-4 py-2 bg-orange-600 text-white font-bold text-xs rounded-xl hover:bg-orange-700">Simpan Key</button>
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+
+                <!-- Footer -->
+                <footer class="bg-black text-neutral-400 py-6 text-center text-xs no-print border-t-2 border-orange-500 mt-auto">
+                    <div class="max-w-7xl mx-auto px-4">
+                        <p class="font-bold text-white">SI PASTI — <span class="text-orange-500">UPTD SDN DHARMA TANJUNG 1</span></p>
+                        <p class="text-[11px] text-neutral-400 mt-1">Sistem Cerdas Penyusunan Asesmen Otomatis Berbasis Artificial Intelligence • Kec. Camplong, Kab. Sampang</p>
+                    </div>
+                </footer>
+            `;
+
+            renderTabContent();
+            lucide.createIcons();
+            attachMainEvents();
+        }
+
+        function renderTabContent() {
+            const container = document.getElementById('tab-content');
+            if (!container) return;
+
+            if (state.activeTab === 'dashboard') {
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-r from-neutral-900 via-orange-950 to-black rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-orange-500/30">
+                            <div class="relative z-10 max-w-3xl">
+                                <div class="inline-flex items-center gap-2 px-3 py-1 bg-orange-600/30 rounded-full text-xs font-medium text-orange-300 border border-orange-500/40 mb-4">
+                                    <i data-lucide="school" class="w-3.5 h-3.5 text-orange-400"></i>
+                                    UPTD SDN DHARMA TANJUNG 1 - Camplong
+                                </div>
+                                <h1 class="text-2xl sm:text-4xl font-black tracking-tight mb-3 text-white">
+                                    Selamat Datang di <span class="text-orange-500">SI PASTI AI</span>
+                                </h1>
+                                <p class="text-neutral-300 text-sm sm:text-base leading-relaxed mb-6">
+                                    Solusi cerdas berbasis Artificial Intelligence untuk menyusun asesmen pembelajaran Kurikulum Merdeka bagi Guru SD secara presisi, cepat, dan otomatis.
+                                </p>
+                                <div class="flex flex-wrap gap-3">
+                                    <button class="nav-tab px-6 py-3 bg-orange-600 hover:bg-orange-500 text-white font-extrabold rounded-2xl shadow-lg flex items-center gap-2 text-sm" data-tab="create">
+                                        <i data-lucide="sparkles" class="w-4 h-4"></i> Mulai Buat Soal Sekarang
+                                    </button>
+                                    <button class="nav-tab px-5 py-3 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold rounded-2xl border border-neutral-600 flex items-center gap-2 text-sm" data-tab="guide">
+                                        <i data-lucide="help-circle" class="w-4 h-4 text-orange-400"></i> Panduan Penggunaan
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="nav-tab bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 cursor-pointer hover:border-orange-500 transition group" data-tab="create">
+                                <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition">
+                                    <i data-lucide="brain" class="w-6 h-6"></i>
+                                </div>
+                                <h3 class="font-bold text-lg text-neutral-900 mb-2 group-hover:text-orange-600">1. Penyusunan Cerdas AI</h3>
+                                <p class="text-xs text-neutral-600 leading-relaxed">Menyusun soal otomatis yang disesuaikan dengan Fase A, B, C, Capaian Pembelajaran, serta standar HOTS.</p>
+                            </div>
+
+                            <div class="nav-tab bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 cursor-pointer hover:border-orange-500 transition group" data-tab="history">
+                                <div class="w-12 h-12 bg-neutral-900 rounded-xl flex items-center justify-center text-orange-500 mb-4 group-hover:scale-110 transition">
+                                    <i data-lucide="bookmark" class="w-6 h-6"></i>
+                                </div>
+                                <h3 class="font-bold text-lg text-neutral-900 mb-2 group-hover:text-orange-600">2. Bank & Riwayat Soal</h3>
+                                <p class="text-xs text-neutral-600 leading-relaxed">Semua instrumen soal yang pernah dibuat tersimpan aman. Dapat diedit, diunduh, atau dicetak ulang kapan saja.</p>
+                            </div>
+
+                            <div class="nav-tab bg-white p-6 rounded-2xl shadow-sm border border-neutral-200 cursor-pointer hover:border-orange-500 transition group" data-tab="guide">
+                                <div class="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition border border-orange-200">
+                                    <i data-lucide="file-text" class="w-6 h-6"></i>
+                                </div>
+                                <h3 class="font-bold text-lg text-neutral-900 mb-2 group-hover:text-orange-600">3. Ekspor Siap Cetak</h3>
+                                <p class="text-xs text-neutral-600 leading-relaxed">Hasil keluaran lengkap meliputi Lembar Soal Siswa, Kisi-Kisi Soal, Kunci Jawaban, dan Pedoman Penskoran.</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-6 border border-neutral-200 shadow-sm flex flex-col md:flex-row items-center gap-6">
+                            <img src="${SCHOOL_LOGO}" alt="Logo" class="h-20 w-auto object-contain" />
+                            <div class="flex-1 text-center md:text-left">
+                                <h4 class="font-extrabold text-neutral-900 text-base">UPTD SDN DHARMA TANJUNG 1</h4>
+                                <p class="text-xs text-neutral-600 mt-0.5">Kecamatan Camplong, Kabupaten Sampang, Jawa Timur</p>
+                                <p class="text-xs text-orange-600 font-semibold mt-2">"Menuju Pendidikan Dasar Berkualitas dan Berbasis Teknologi Digital"</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (state.activeTab === 'create') {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-neutral-200 shadow-xl p-6 sm:p-8">
+                        <div class="border-b border-neutral-200 pb-5 mb-6">
+                            <div class="flex items-center gap-2 text-orange-600 font-bold text-xs uppercase tracking-wider mb-1">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-orange-500"></i> Formulir Generator Soal Cerdas
+                            </div>
+                            <h2 class="text-2xl font-black text-neutral-900">Pengaturan Pembuatan Soal</h2>
+                            <p class="text-xs text-neutral-500 mt-1">Lengkapi parameter di bawah ini. AI akan menyesuaikan soal sesuai sasaran pembelajaran.</p>
+                        </div>
+
+                        <form id="create-soal-form" class="space-y-6">
+                            <!-- SECTION A -->
+                            <div class="bg-neutral-50 p-5 rounded-xl border border-neutral-200 space-y-4">
+                                <h3 class="text-xs font-extrabold text-orange-600 uppercase tracking-wider flex items-center gap-2">
+                                    <i data-lucide="user" class="w-4 h-4"></i> A. Identitas Pengajar & Kelas
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Nama Guru / Pengampu</label>
+                                        <input type="text" id="f-teacher" value="${state.formData.teacherName}" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900" required />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Tingkat Kelas</label>
+                                        <select id="f-grade" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm font-medium text-neutral-900">
+                                            <option value="Kelas 1" ${state.formData.grade === 'Kelas 1' ? 'selected' : ''}>Kelas 1 (Fase A)</option>
+                                            <option value="Kelas 2" ${state.formData.grade === 'Kelas 2' ? 'selected' : ''}>Kelas 2 (Fase A)</option>
+                                            <option value="Kelas 3" ${state.formData.grade === 'Kelas 3' ? 'selected' : ''}>Kelas 3 (Fase B)</option>
+                                            <option value="Kelas 4" ${state.formData.grade === 'Kelas 4' ? 'selected' : ''}>Kelas 4 (Fase B)</option>
+                                            <option value="Kelas 5" ${state.formData.grade === 'Kelas 5' ? 'selected' : ''}>Kelas 5 (Fase C)</option>
+                                            <option value="Kelas 6" ${state.formData.grade === 'Kelas 6' ? 'selected' : ''}>Kelas 6 (Fase C)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Fase Kurikulum</label>
+                                        <input type="text" id="f-phase" value="${state.formData.phase}" disabled class="w-full px-3 py-2 bg-neutral-200 border border-neutral-300 rounded-lg text-sm font-bold text-orange-600 cursor-not-allowed" />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Semester</label>
+                                        <select id="f-semester" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900">
+                                            <option value="Semester Ganjil" ${state.formData.semester === 'Semester Ganjil' ? 'selected' : ''}>Semester Ganjil</option>
+                                            <option value="Semester Genap" ${state.formData.semester === 'Semester Genap' ? 'selected' : ''}>Semester Genap</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Tahun Pelajaran</label>
+                                        <input type="text" id="f-year" value="${state.formData.schoolYear}" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900" required />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Tanggal Asesmen</label>
+                                        <input type="date" id="f-date" value="${state.formData.assessmentDate}" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900" required />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SECTION B -->
+                            <div class="bg-neutral-50 p-5 rounded-xl border border-neutral-200 space-y-4">
+                                <h3 class="text-xs font-extrabold text-orange-600 uppercase tracking-wider flex items-center gap-2">
+                                    <i data-lucide="book-open" class="w-4 h-4"></i> B. Mata Pelajaran & Parameter Soal
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Mata Pelajaran</label>
+                                        <select id="f-subject" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm font-semibold text-neutral-900">
+                                            ${SUBJECTS.map(s => `<option value="${s}" ${state.formData.subject === s ? 'selected' : ''}>${s}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Jenis Asesmen</label>
+                                        <select id="f-type" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900">
+                                            <option value="Asesmen Formatif" ${state.formData.assessmentType === 'Asesmen Formatif' ? 'selected' : ''}>Asesmen Formatif</option>
+                                            <option value="Asesmen Sumatif" ${state.formData.assessmentType === 'Asesmen Sumatif' ? 'selected' : ''}>Asesmen Sumatif</option>
+                                            <option value="Penilaian Harian" ${state.formData.assessmentType === 'Penilaian Harian' ? 'selected' : ''}>Penilaian Harian</option>
+                                            <option value="Asesmen Diagnostik" ${state.formData.assessmentType === 'Asesmen Diagnostik' ? 'selected' : ''}>Asesmen Diagnostik</option>
+                                            <option value="Pengayaan" ${state.formData.assessmentType === 'Pengayaan' ? 'selected' : ''}>Pengayaan</option>
+                                            <option value="Remedial" ${state.formData.assessmentType === 'Remedial' ? 'selected' : ''}>Remedial</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Tingkat Kesulitan</label>
+                                        <select id="f-difficulty" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm font-semibold text-neutral-900">
+                                            <option value="Mudah" ${state.formData.difficulty === 'Mudah' ? 'selected' : ''}>Mudah</option>
+                                            <option value="Sedang" ${state.formData.difficulty === 'Sedang' ? 'selected' : ''}>Sedang</option>
+                                            <option value="Menantang" ${state.formData.difficulty === 'Menantang' ? 'selected' : ''}>Menantang</option>
+                                            <option value="HOTS" ${state.formData.difficulty === 'HOTS' ? 'selected' : ''}>HOTS (Higher Order Thinking Skills)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-neutral-800 mb-1">Materi / Ruang Lingkup Utama</label>
+                                    <input type="text" id="f-topic" value="${state.formData.topic}" placeholder="Contoh: Bilangan Cacah, Keragaman Budaya..." class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900" required />
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-neutral-800 mb-1">Tujuan Pembelajaran (TP / Indikator)</label>
+                                    <textarea id="f-objective" rows="2" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900" required>${state.formData.learningObjective}</textarea>
+                                </div>
+                            </div>
+
+                            <!-- SECTION C -->
+                            <div class="bg-neutral-50 p-5 rounded-xl border border-neutral-200 space-y-4">
+                                <h3 class="text-xs font-extrabold text-orange-600 uppercase tracking-wider flex items-center gap-2">
+                                    <i data-lucide="layers" class="w-4 h-4"></i> C. Bentuk & Jumlah Soal
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-800 mb-1">Jumlah Soal Total</label>
+                                        <input type="number" id="f-count" min="1" max="50" value="${state.formData.questionCount}" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm font-bold text-orange-600" required />
+                                    </div>
+                                    <div class="md:col-span-3">
+                                        <label class="block text-xs font-bold text-neutral-800 mb-2">Pilih Bentuk Soal</label>
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            ${QUESTION_TYPES.map(t => {
+                                                const checked = state.formData.selectedTypes.includes(t.id);
+                                                return `
+                                                    <label class="flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer ${checked ? 'bg-orange-100 border-orange-500 font-bold text-orange-900' : 'bg-white border-neutral-300 text-neutral-700'}">
+                                                        <input type="checkbox" class="q-type-check rounded text-orange-600 h-4 w-4" value="${t.id}" ${checked ? 'checked' : ''} />
+                                                        <span>${t.name}</span>
+                                                    </label>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-neutral-800 mb-1">Instruksi Khusus Tambahan untuk AI (Opsional)</label>
+                                    <textarea id="f-instruction" rows="2" class="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm text-neutral-900">${state.formData.additionalInstruction}</textarea>
+                                </div>
+                            </div>
+
+                            <div class="pt-2">
+                                <button type="submit" ${state.isLoading ? 'disabled' : ''} class="w-full py-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-base rounded-2xl shadow-xl flex items-center justify-center gap-3 transition">
+                                    ${state.isLoading ? `
+                                        <i data-lucide="refresh-cw" class="w-5 h-5 animate-spin"></i>
+                                        <span>${state.loadingMessage}</span>
+                                    ` : `
+                                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                                        <span>✨ BUAT SOAL DENGAN AI</span>
+                                    `}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+
+                // Attach Form Logic
+                document.getElementById('f-grade').addEventListener('change', (e) => {
+                    state.formData.grade = e.target.value;
+                    updatePhase();
+                    document.getElementById('f-phase').value = state.formData.phase;
+                });
+
+                document.getElementById('create-soal-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    state.formData.teacherName = document.getElementById('f-teacher').value;
+                    state.formData.grade = document.getElementById('f-grade').value;
+                    state.formData.semester = document.getElementById('f-semester').value;
+                    state.formData.schoolYear = document.getElementById('f-year').value;
+                    state.formData.assessmentDate = document.getElementById('f-date').value;
+                    state.formData.subject = document.getElementById('f-subject').value;
+                    state.formData.assessmentType = document.getElementById('f-type').value;
+                    state.formData.difficulty = document.getElementById('f-difficulty').value;
+                    state.formData.topic = document.getElementById('f-topic').value;
+                    state.formData.learningObjective = document.getElementById('f-objective').value;
+                    state.formData.questionCount = parseInt(document.getElementById('f-count').value) || 5;
+                    state.formData.additionalInstruction = document.getElementById('f-instruction').value;
+
+                    const checks = Array.from(document.querySelectorAll('.q-type-check:checked')).map(c => c.value);
+                    if (checks.length === 0) return showToast('Pilih minimal 1 bentuk soal!', 'error');
+                    state.formData.selectedTypes = checks;
+
+                    handleGenerateQuestions();
+                });
+
+            } else if (state.activeTab === 'result' && state.generatedResult) {
+                const res = state.generatedResult;
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm flex flex-wrap items-center justify-between gap-3 no-print">
+                            <button class="nav-tab px-3.5 py-2 text-xs font-bold bg-neutral-100 text-neutral-800 rounded-xl flex items-center gap-1.5" data-tab="create">
+                                <i data-lucide="arrow-left" class="w-4 h-4"></i> Kembali ke Form
+                            </button>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button id="btn-copy-soal" class="px-3 py-2 bg-neutral-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5 text-orange-400"></i> Salin Soal
+                                </button>
+                                <button id="btn-download-word" class="px-3 py-2 bg-orange-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5">
+                                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Unduh Word (.doc)
+                                </button>
+                                <button onclick="window.print()" class="px-3 py-2 bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5 border border-orange-500/50">
+                                    <i data-lucide="printer" class="w-3.5 h-3.5 text-orange-400"></i> Cetak / Simpan PDF
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Printable Sheet -->
+                        <div id="printable-area" class="bg-white rounded-2xl border border-neutral-300 shadow-xl p-8 sm:p-12 text-neutral-900 font-serif">
+                            <div class="border-b-4 border-double border-black pb-4 mb-6 flex items-center justify-between text-center gap-4">
+                                <img src="${SCHOOL_LOGO}" alt="KOP Logo" class="h-20 w-auto object-contain shrink-0" />
+                                <div class="flex-1">
+                                    <h3 class="text-base font-bold uppercase tracking-wider text-black">PEMERINTAH KABUPATEN SAMPANG</h3>
+                                    <h3 class="text-sm font-bold uppercase text-black">DINAS PENDIDIKAN</h3>
+                                    <h2 class="text-xl font-black uppercase tracking-tight text-black mt-0.5">UPTD SDN DHARMA TANJUNG 1</h2>
+                                    <p class="text-[11px] font-sans text-neutral-700 mt-1">Jl. Raya Camplong - Sampang, Kec. Camplong, Kab. Sampang, Jawa Timur</p>
+                                </div>
+                                <div class="w-20 hidden sm:block"></div>
+                            </div>
+
+                            <div class="mb-6 font-sans text-xs border border-neutral-300 rounded-lg p-4 bg-neutral-50">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-y-2 gap-x-4">
+                                    <div><span class="font-bold text-neutral-500">Mata Pelajaran:</span> <p class="font-extrabold text-neutral-900">${res.metadata.subject}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Kelas / Fase:</span> <p class="font-extrabold text-neutral-900">${res.metadata.grade} (${res.metadata.phase})</p></div>
+                                    <div><span class="font-bold text-neutral-500">Semester / TP:</span> <p class="font-extrabold text-neutral-900">${res.metadata.semester} - ${res.metadata.schoolYear}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Jenis Asesmen:</span> <p class="font-extrabold text-neutral-900">${res.metadata.assessmentType}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Guru Pengampu:</span> <p class="font-bold text-neutral-900">${res.metadata.teacherName}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Materi Utama:</span> <p class="font-bold text-neutral-900">${res.metadata.topic}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Tgl. Asesmen:</span> <p class="font-bold text-neutral-900">${formatIndonesianDate(res.metadata.assessmentDate)}</p></div>
+                                    <div><span class="font-bold text-neutral-500">Tingkat Kesulitan:</span> <p class="font-bold text-orange-600">${res.metadata.difficulty}</p></div>
+                                </div>
+                                <div class="mt-4 pt-3 border-t border-neutral-300 grid grid-cols-3 gap-2 font-bold text-neutral-800">
+                                    <div>Nama Siswa : ...........................................</div>
+                                    <div>No. Absen : .............</div>
+                                    <div>Nilai : .............</div>
+                                </div>
+                            </div>
+
+                            <div class="mb-8 font-sans text-xs bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                <p class="font-bold text-orange-900 mb-0.5">PETUNJUK PENGERJAAN:</p>
+                                <p class="text-neutral-800">${res.generated.instructions || 'Bacalah pertanyaan berikut dengan cermat.'}</p>
+                            </div>
+
+                            <div class="mb-12">
+                                <h2 class="text-center font-sans font-black text-lg uppercase tracking-wider text-black border-b-2 border-black pb-2 mb-6">
+                                    LEMBAR SOAL SISWA
+                                </h2>
+                                <div class="space-y-6">
+                                    ${res.generated.questions.map((q, idx) => `
+                                        <div class="border-b border-neutral-200 pb-4">
+                                            <div class="text-sm flex items-start gap-2">
+                                                <span class="font-bold text-neutral-900 shrink-0">${q.number}.</span>
+                                                <div class="flex-1">
+                                                    <p class="font-medium text-neutral-900 leading-relaxed whitespace-pre-line">${q.question}</p>
+                                                    ${q.options && q.options.length ? `
+                                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pl-2">
+                                                            ${q.options.map(opt => `<div class="text-xs text-neutral-800">${opt}</div>`).join('')}
+                                                        </div>
+                                                    ` : ''}
+                                                    ${q.pairs && q.pairs.length ? `
+                                                        <table class="w-full border-collapse border border-neutral-300 mt-3 text-xs">
+                                                            <thead><tr class="bg-neutral-100"><th class="border border-neutral-300 p-2 text-left">Soal</th><th class="border border-neutral-300 p-2 text-left">Pasangan</th></tr></thead>
+                                                            <tbody>${q.pairs.map(p => `<tr><td class="border border-neutral-300 p-2">${p.item}</td><td class="border border-neutral-300 p-2">${p.match}</td></tr>`).join('')}</tbody>
+                                                        </table>
+                                                    ` : ''}
+                                                    ${(q.type === 'Uraian' || q.type === 'Isian' || q.type === 'HOTS') ? `
+                                                        <div class="mt-3 pl-2">
+                                                            <div class="border-b border-dashed border-neutral-400 h-6"></div>
+                                                            <div class="border-b border-dashed border-neutral-400 h-6"></div>
+                                                        </div>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- Page Break -->
+                            <div class="page-break font-sans pt-8 border-t-4 border-black">
+                                <div class="mb-10">
+                                    <h2 class="text-center font-bold text-base uppercase tracking-wider text-black mb-4">KISI-KISI INSTRUMEN ASESMEN</h2>
+                                    <table class="w-full border-collapse border border-neutral-400 text-xs">
+                                        <thead>
+                                            <tr class="bg-neutral-200 text-black">
+                                                <th class="border border-neutral-400 p-2 text-center w-12">No</th>
+                                                <th class="border border-neutral-400 p-2 text-left">Materi Utama</th>
+                                                <th class="border border-neutral-400 p-2 text-left">Indikator Soal</th>
+                                                <th class="border border-neutral-400 p-2 text-center w-28">Bentuk Soal</th>
+                                                <th class="border border-neutral-400 p-2 text-center w-24">Level</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${res.generated.questions.map(q => `
+                                                <tr>
+                                                    <td class="border border-neutral-400 p-2 text-center font-bold">${q.number}</td>
+                                                    <td class="border border-neutral-400 p-2">${res.metadata.topic}</td>
+                                                    <td class="border border-neutral-400 p-2">${q.indicator || res.metadata.learningObjective}</td>
+                                                    <td class="border border-neutral-400 p-2 text-center">${q.type}</td>
+                                                    <td class="border border-neutral-400 p-2 text-center font-semibold text-orange-600">${q.cognitiveLevel || 'C2'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h2 class="text-center font-bold text-base uppercase tracking-wider text-black mb-4">KUNCI JAWABAN & PEDOMAN PENSKORAN</h2>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div class="border border-neutral-300 rounded-lg p-4 bg-neutral-50 text-xs">
+                                            <h4 class="font-bold uppercase mb-3 border-b pb-1">Kunci Jawaban Official</h4>
+                                            <div class="space-y-2">
+                                                ${res.generated.questions.map(q => `<div><span class="font-bold text-orange-600">${q.number}.</span> ${q.answerKey}</div>`).join('')}
+                                            </div>
+                                        </div>
+                                        <div class="border border-neutral-300 rounded-lg p-4 bg-neutral-50 text-xs">
+                                            <h4 class="font-bold uppercase mb-3 border-b pb-1">Pedoman Penskoran</h4>
+                                            <p class="text-neutral-700 mb-2">${res.generated.scoringRubric?.summary}</p>
+                                            <div class="bg-white p-3 rounded border font-bold text-orange-600">
+                                                ${res.generated.scoringRubric?.formula || 'Nilai = (Skor Perolehan / Skor Maksimal) x 100'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-12 pt-6 grid grid-cols-2 text-center font-sans text-xs">
+                                    <div>
+                                        <p>Mengetahui,</p>
+                                        <p class="font-bold">Kepala UPTD SDN DHARMA TANJUNG 1</p>
+                                        <div class="h-16"></div>
+                                        <p class="font-bold underline">H. AHMAD HUSEN, S.Pd., M.M.</p>
+                                        <p>NIP. 19680512 199203 1 008</p>
+                                    </div>
+                                    <div>
+                                        <p>Sampang, ${formatIndonesianDate(res.metadata.assessmentDate)}</p>
+                                        <p class="font-bold">Guru Kelas / Mata Pelajaran</p>
+                                        <div class="h-16"></div>
+                                        <p class="font-bold underline">${res.metadata.teacherName}</p>
+                                        <p>Guru UPTD SDN DHARMA TANJUNG 1</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('btn-copy-soal').addEventListener('click', handleCopyText);
+                document.getElementById('btn-download-word').addEventListener('click', handleDownloadDoc);
+
+            } else if (state.activeTab === 'history') {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-neutral-200 shadow-xl p-6 sm:p-8">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-200 pb-5 mb-6">
+                            <div>
+                                <h2 class="text-2xl font-black text-neutral-900">Riwayat Asesmen Soal</h2>
+                                <p class="text-xs text-neutral-500 mt-1">Daftar instrumen soal yang pernah disusun dan tersimpan secara lokal.</p>
+                            </div>
+                            <div class="relative max-w-xs w-full">
+                                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-neutral-400"></i>
+                                <input type="text" id="search-history" value="${state.searchHistory}" placeholder="Cari mata pelajaran, materi..." class="w-full pl-9 pr-3 py-2 bg-neutral-50 border border-neutral-300 rounded-xl text-xs text-neutral-900" />
+                            </div>
+                        </div>
+
+                        ${state.historyList.length === 0 ? `
+                            <div class="text-center py-12">
+                                <i data-lucide="file-text" class="w-12 h-12 text-neutral-300 mx-auto mb-3"></i>
+                                <p class="text-neutral-700 font-bold text-sm">Belum Ada Riwayat Soal Tersimpan</p>
+                                <button class="nav-tab mt-4 px-4 py-2 bg-orange-600 text-white font-bold text-xs rounded-xl" data-tab="create">Buat Soal Sekarang</button>
+                            </div>
+                        ` : `
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                ${state.historyList.filter(item => {
+                                    const q = state.searchHistory.toLowerCase();
+                                    return item.metadata.subject.toLowerCase().includes(q) || item.metadata.topic.toLowerCase().includes(q);
+                                }).map(item => `
+                                    <div class="border border-neutral-200 rounded-2xl p-5 hover:border-orange-500 bg-neutral-50 flex flex-col justify-between">
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="px-2.5 py-0.5 bg-orange-100 text-orange-800 font-bold text-[10px] rounded-full">${item.metadata.grade}</span>
+                                                <span class="text-[10px] text-neutral-400">${new Date(item.createdAt).toLocaleDateString('id-ID')}</span>
+                                            </div>
+                                            <h3 class="font-extrabold text-neutral-900 text-base mb-1">${item.metadata.subject}</h3>
+                                            <p class="text-xs text-neutral-600 mb-3"><span class="font-bold">Materi:</span> ${item.metadata.topic}</p>
+                                        </div>
+                                        <div class="flex items-center justify-between pt-3 border-t border-neutral-200">
+                                            <button class="open-history-btn px-3 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-lg flex items-center gap-1" data-id="${item.id}">
+                                                <i data-lucide="eye" class="w-3.5 h-3.5"></i> Buka Soal
+                                            </button>
+                                            <button class="delete-history-btn p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg" data-id="${item.id}">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `}
+                    </div>
+                `;
+
+                document.getElementById('search-history')?.addEventListener('input', (e) => {
+                    state.searchHistory = e.target.value;
+                    renderTabContent();
+                    lucide.createIcons();
+                });
+
+                document.querySelectorAll('.open-history-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const id = btn.getAttribute('data-id');
+                        const item = state.historyList.find(h => h.id === id);
+                        if (item) {
+                            state.generatedResult = item;
+                            state.activeTab = 'result';
+                            render();
+                        }
+                    });
+                });
+
+                document.querySelectorAll('.delete-history-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        deleteHistoryItem(btn.getAttribute('data-id'));
+                    });
+                });
+
+            } else if (state.activeTab === 'guide') {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-neutral-200 shadow-xl p-6 sm:p-8 space-y-6">
+                        <div class="border-b border-neutral-200 pb-4">
+                            <h2 class="text-2xl font-black text-neutral-900">Panduan Penggunaan SI PASTI</h2>
+                            <p class="text-xs text-neutral-500 mt-1">Petunjuk operasional penyusunan instrumen soal bagi Guru UPTD SDN DHARMA TANJUNG 1.</p>
+                        </div>
+                        <div class="space-y-4 text-xs sm:text-sm text-neutral-700 leading-relaxed">
+                            <div class="bg-orange-50 p-4 rounded-xl border border-orange-200">
+                                <h3 class="font-bold text-orange-900 text-sm mb-2 flex items-center gap-2">
+                                    <i data-lucide="sparkles" class="w-4 h-4 text-orange-500"></i> Langkah-Langkah Pembuatan Soal Otomatis:
+                                </h3>
+                                <ol class="list-decimal pl-5 space-y-1.5 text-neutral-800">
+                                    <li>Klik menu <span class="font-bold text-orange-600">"Buat Soal Baru"</span> pada navigasi utama.</li>
+                                    <li>Lengkapi identitas guru, kelas (Fase A/B/C otomatis), dan semester.</li>
+                                    <li>Pilih Mata Pelajaran Kurikulum Merdeka.</li>
+                                    <li>Isi Materi Utama dan Tujuan Pembelajaran (TP) secara spesifik.</li>
+                                    <li>Klik <span class="font-bold text-orange-600">"✨ BUAT SOAL DENGAN AI"</span>.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function attachMainEvents() {
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.activeTab = btn.getAttribute('data-tab');
+                    render();
+                });
+            });
+
+            document.getElementById('nav-logo')?.addEventListener('click', () => {
+                state.activeTab = 'dashboard';
+                render();
+            });
+
+            document.getElementById('btn-logout')?.addEventListener('click', () => {
+                state.isAuthenticated = false;
+                state.pinInput = '';
+                state.activeTab = 'dashboard';
+                render();
+            });
+
+            document.getElementById('btn-api-key')?.addEventListener('click', () => {
+                state.showKeyModal = true;
+                render();
+            });
+
+            if (state.showKeyModal) {
+                document.getElementById('btn-cancel-key')?.addEventListener('click', () => {
+                    state.showKeyModal = false;
+                    render();
+                });
+
+                document.getElementById('btn-save-key')?.addEventListener('click', () => {
+                    const key = document.getElementById('modal-key-input').value.trim();
+                    state.customApiKey = key;
+                    localStorage.setItem('sipasti_gemini_key', key);
+                    state.showKeyModal = false;
+                    showToast('API Key Gemini berhasil disimpan', 'success');
+                    render();
+                });
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            render();
+        });
+    </script>
+</body>
+</html>
